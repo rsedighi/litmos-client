@@ -1,9 +1,11 @@
-require 'rest_client'
+require 'rest-client'
 require 'json'
+require 'active_support'
+require 'active_support/core_ext'
 
-require File.dirname(__FILE__) + '/litmos_client/users'
-require File.dirname(__FILE__) + '/litmos_client/teams'
-require File.dirname(__FILE__) + '/litmos_client/courses'
+require_relative File.dirname(__FILE__) + '/litmos_client/users'
+require_relative File.dirname(__FILE__) + '/litmos_client/teams'
+require_relative File.dirname(__FILE__) + '/litmos_client/courses'
 
 module LitmosClient
   class NotFound < Exception; end
@@ -19,18 +21,20 @@ module LitmosClient
     API_VERSION = "1"
 
     # Initialize with an API key and config options
-    def initialize(api_key, source = nil, config = {})
+    def initialize(api_key, source, config = {})
       raise ArgumentError.new('Your need to specify your api key') unless api_key
       raise ArgumentError.new('You need to specify a source website') unless source
 
+
       defaults = {
-        :api_version        => API_VERSION
+        :api_version => API_VERSION
       }
 
       @config = defaults.merge(config).freeze
       @api_key = api_key
       @source = source
-      @litmosURL = "https://api.litmos.com/v#{@config[:api_version]}.svc/"
+      @litmosURL = "https://api.litmoseu.com/v#{@config[:api_version]}.svc/"
+      @devURL = "http://apidev.litmos.com/v#{@config[:api_version]}.svc/"
     end
 
     def get(path, params={})
@@ -39,15 +43,20 @@ module LitmosClient
       options = {
         :content_type => :json, 
         :accept => :json, 
-        :params => params.merge(:apikey => @api_key, :source => @source)
+        :params => params.merge(:apikey => @api_key, :source => @source, :limit=> 1000)
       }
 
-      RestClient.get("#{@litmosURL}/#{path}", options) do |response, request, result|
+      RestClient.get("#{@litmosURL}#{path}", options) do |response, request, result|
+        puts "Getting...#{request.url} | #{response.code}"
+        # puts request.url
+        # puts response.code
         case response.code
-        when 200, 201 
+        when 200, 201
+
+          
           # 200 Success. User/Course etc updated, deleted or retrieved
           # 201 Success. User/Course etc created
-          if response.blank?
+          if response.nil?
             true
           else
             if dont_parse_response
@@ -57,13 +66,13 @@ module LitmosClient
             end
           end
         when 404 # 404 Not Found. The User/Course etc that you requested does not exist
-          raise NotFound.new(response)
+          next NotFound.new(response) 
 
         else
           # 400 Bad Request. Check that your Uri and request body is well formed
           # 403 Forbidden. Check your API key, HTTPS setting, Source parameter etc
           # 409 Conflict. Often occurs when trying to create an item that already exists
-          raise ApiError.new(response)
+          next ApiError.new(response)
 
         end        
       end
@@ -77,24 +86,28 @@ module LitmosClient
       dont_parse_response = params.delete(:dont_parse_response)
       
       options = {
-        :content_type => :json, 
-        :accept => :json, 
+        :content_type => "application/json",
+        :accept => :json,
+        # :params => params.merge(:apikey => @api_key, :source => @source, :limit=> 1000)
       }
 
-      RestClient.post("#{@litmosURL}/#{path}#{query_string}", params.to_json, options) do |response, request, result|
+      RestClient.post("#{@litmosURL}#{path}#{query_string}&sendmessage=true", params.to_json, content_type:'application/json') do |response, request, result|
+      # RestClient.post("#{@devURL}#{path}#{query_string}&sendmessage=false", params.to_json, content_type:'application/json') do |response, request, result|
+        puts request.url
+        puts response.code
+        
         case response.code
         when 200, 201 
           # 200 Success. User/Course etc updated, deleted or retrieved
           # 201 Success. User/Course etc created
-
           if response.blank?
             true
-          else
-            if dont_parse_response
-              response
-            else
-              parse_response(response)
-            end
+          # else
+          #   if dont_parse_response
+          #     response
+          #   else
+          #     parse_response(response)
+          #   end
           end
 
         when 404 # 404 Not Found. The User/Course etc that you requested does not exist
@@ -115,14 +128,16 @@ module LitmosClient
       query_string = query_params.collect { |k,v| "#{k}=#{CGI::escape(v)}" }.join('&')
       query_string = "?#{query_string}" unless query_string.blank?
 
-      dont_parse_response = params.delete(:dont_parse_response)
+      # dont_parse_response = params.delete(:dont_parse_response)
+
       
       options = {
-        :content_type => :json, 
+        :content_type=>'application/json', 
         :accept => :json, 
       }
 
-      RestClient.put("#{@litmosURL}/#{path}#{query_string}", params.to_json, options) do |response, request, result|
+      RestClient.put("#{@litmosURL}#{path}#{query_string}", params.to_json, content_type:'application/json') do |response, request, result|
+        puts "Putting: #{request.url} | #{response.code} | #{params}"
         case response.code
         when 200, 201 
           # 200 Success. User/Course etc updated, deleted or retrieved
@@ -145,6 +160,9 @@ module LitmosClient
           # 400 Bad Request. Check that your Uri and request body is well formed
           # 403 Forbidden. Check your API key, HTTPS setting, Source parameter etc
           # 409 Conflict. Often occurs when trying to create an item that already exists
+          # puts request.url
+          # puts request.headers
+          # puts response.cookies
           raise ApiError.new(response)
 
         end        
@@ -154,6 +172,7 @@ module LitmosClient
     def delete(path, params={})
       dont_parse_response = params.delete(:dont_parse_response)
 
+
       options = {
         :content_type => :json, 
         :accept => :json, 
@@ -161,8 +180,12 @@ module LitmosClient
       }
 
       RestClient.delete("#{@litmosURL}/#{path}", options) do |response, request, result|
+        puts "Deleting: #{request.url} | Code: #{response.code} "
         case response.code
-        when 200, 201 
+        when 200 
+          return 200
+        when 201
+          return 201
           # 200 Success. User/Course etc updated, deleted or retrieved
           # 201 Success. User/Course etc created
 
@@ -222,13 +245,13 @@ module LitmosClient
       end
 
       case value
-      when Array
-        value.map { |v| convert_hash_keys(v) }
-        # or `value.map(&method(:convert_hash_keys))`
-      when Hash
-        Hash[value.map { |k, v| [underscore_key(k), convert_hash_keys(v)] }]
-      else
-        value
+        when Array
+          value.map { |v| convert_hash_keys(v) }
+          # or `value.map(&method(:convert_hash_keys))`
+        when Hash
+          Hash[value.map { |k, v| [underscore_key(k), convert_hash_keys(v)] }]
+        else
+          value
        end
     end
 
