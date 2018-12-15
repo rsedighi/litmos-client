@@ -33,7 +33,7 @@ module LitmosClient
       @config = defaults.merge(config).freeze
       @api_key = api_key
       @source = source
-      @litmosURL = "https://api.litmoseu.com/v#{@config[:api_version]}.svc/"
+      @litmosURL = "https://api.litmos.com/v#{@config[:api_version]}.svc/"
       @devURL = "http://apidev.litmos.com/v#{@config[:api_version]}.svc/"
     end
 
